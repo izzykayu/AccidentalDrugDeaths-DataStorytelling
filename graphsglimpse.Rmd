@@ -1,0 +1,918 @@
+---
+title: "R Notebook on National Opioid Death Simple EDA"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+## NATIONAL OPIOID DEATHS EXPLORATORY DATA ANALYSIS
+_Making graphs used in glimpse of US opioid deaths/ state rates - Exploratory Data Analaysis_
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+library(readr)
+X2015_death_data <- read_csv("2015-death-data.csv")
+Xdeath_2013_2014 <- read_csv("drug_poisoning_deaths_by_state-_us_2013_2014-v7.csv")
+mycols3 <- c("#c6d4e1", "#2f2016", "#fcfaea", "#456789")
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(DT)
+death2015 <- X2015_death_data %>% dplyr::select(-X5, -X6, -X7, -X8)
+colnames(death2015) <- c("state", "Range.2015", "Rate.2015", "Deaths.2015")
+colnames(Xdeath_2013_2014) <- c("state", "Rate.2014", "Deaths.2014", "Range.2014",
+                                "Rate.2013", "Deaths.2013", "Range.2013", "Change",
+                                "Significant")
+
+library(noncensus)
+data("states")
+overdosedeath <- death2015 %>% 
+  left_join(states, by="state")
+fullopioiddeathset_2013_2015 <- overdosedeath %>% 
+  right_join(Xdeath_2013_2014)
+library(ggthemes)
+# re-order levels
+reorder_size <- function(x) {
+        factor(x, levels = names(sort(table(x), decreasing = TRUE)))
+}
+# creating new dataframe
+longset <- fullopioiddeathset_2013_2015 %>% 
+  gather(Deaths.2013,Deaths.2014,Deaths.2015, 
+         key="Year", value="Deaths")
+```
+```{r plots of DeathRates, message=FALSE, warning=FALSE}
+theme_set(theme_classic())
+cov.cols <-c("#9D1F2F","#d6604d", "#92c5de","#0571b0")
+cols <-c('#520B44', '#C61859', '#EC8F02', '#F9D100')
+longset$year <- longset$Year
+longset$Year <- gsub("Deaths.2013", 2013, longset$Year)
+longset$Year <- gsub("Deaths.2014", 2014, longset$Year)
+longset$Year <- gsub("Deaths.2015", 2015, longset$Year)
+ res <- longset %>% dplyr::select(Year, Deaths, region)
+ res$region <- as.character(res$region)
+ res$Year <- as.numeric(res$Year)
+  colnames(res) <- c("Year", "Opioid.Deaths", "Region")
+
+rate.13.15.plot <- longset %>% gather(Rate.2013,Rate.2014,Rate.2015, key="yr",
+                                      value="Rate") %>% 
+  mutate(name=reorder(name, Rate)) %>% ggplot(aes(name, Rate, fill=Year)) + geom_col() + 
+  scale_fill_manual(values=c("#774F38", mycols3)) + 
+  theme_classic() + coord_flip() + 
+  labs(x="", y="Opioid Death Rate", subtitle="Age + Popln adjusted Death Rates") +
+        # theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+                theme(axis.text = element_text(hjust = 1, size=6.7, angle=20), 
+                      axis.title = element_text(size=9), legend.position = "none") 
+
+rawcounts.13.15.plot <- longset %>% mutate(name=reorder(name, Deaths))%>% 
+  ggplot(aes(name, Deaths, fill=Year)) + geom_col() + 
+  scale_fill_manual(values=c("#774F38", mycols3)) + 
+  theme_classic() + coord_flip() + 
+  labs(x="State", y="Opioid Deaths", subtitle="Opioid Death Counts") +
+        theme(axis.text = element_text(hjust = 1, size=6.7, angle=20), 
+              axis.title = element_text(size=9), legend.position = "none") 
+#multiplot function
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+  require(grid)
+
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  if (is.null(layout)) {
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+  if (numPlots == 1) {
+    print(plots[[1]])
+
+  } else {
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    for (i in 1:numPlots) {
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+```{r, message=FALSE, warning=FALSE}
+multiplot(rawcounts.13.15.plot, rate.13.15.plot, cols=2)
+
+```
+Filtered for median and selected for values higher than that.
+```{r plot of Rates , message=FALSE, warning=FALSE}
+?geom_label
+gbp=c("#733080","#F4BAC8","#A40607","#7288B9","#F0C595","#733080")
+fullopioiddeathset_2013_2015 %>% filter(Significant=="Significant") %>% filter(Change>18.55) -> ds
+ds$Year.2015 <- rep(2015, each=7)
+ds$Year.2014 <- rep(2014, each=7)
+ds$Year.2013 <- rep(2013, each=7)
+ds$Year.2013 <- as.character(ds$Year.2013)
+ds$Year.2014 <- as.character(ds$Year.2014)
+
+fullopioiddeathset_2013_2015 %>% 
+  ggplot(aes(Change, Rate.2014))  + 
+  geom_jitter( aes(col=Significant),alpha=0.52,size=3) +
+  labs(title="Death Rate in 2014 vs Change in Death Rate from 2014-2015", subtitle="Significant Changes higher than the median are annotated") + theme_minimal() +
+  theme(axis.text = element_text(hjust = 1, size=6.7), 
+        axis.title = element_text(size=9)) + scale_color_manual(values=c('#C7F464',"#733080",'#C7F464','#CC4E64'))  +geom_point(aes(Change, Rate.2013, col=Significant))  +  geom_text(data=fullopioiddeathset_2013_2015 %>% filter(Significant=="Significant")  %>%
+filter(Change>18.55), aes(x=Change, y=Rate.2014, label = state), size=3,col="purple4", hjust=-.2) 
+
+
+# ggplot(ds) + scale_color_manual(values=c('#69D2E7','#C7F464','#CC4E64')) + geom_label(aes(x=Change, y=Rate.2013, label=state, col=Year.2013),show.legend = NA, alpha=.9) + geom_label(aes(x=Change, y=Rate.2014, label=state,col=Year.2014),show.legend = NA, alpha=.6)  + theme_dark()
+
+```
+
+```{r fulldf annd plot, include=FALSE, warning=FALSE, message=FALSE}
+full <- data.frame(DeathRate=c(fullopioiddeathset_2013_2015$Rate.2013,fullopioiddeathset_2013_2015$Rate.2014,fullopioiddeathset_2013_2015$Rate.2015), Deaths=c(fullopioiddeathset_2013_2015$Deaths.2013,fullopioiddeathset_2013_2015$Deaths.2014,fullopioiddeathset_2013_2015$Deaths.2015))
+length(fullopioiddeathset_2013_2015$Range.2015)
+fullopioiddeathset_2013_2015 %>% gather(Rate.2013, Rate.2014, Rate.2015, key="key", val="DeathRate") -> newset
+fullopioiddeathset_2013_2015 %>% gather(Deaths.2013, Deaths.2014, Deaths.2015, key="key1", val="Deaths") %>% select(key1, Deaths, state) ->deathset
+colnames(deathset) <- c("KEY", "Deaths", "STATE")
+newset %>% separate(key, c("des", "Year"), by=".") ->new
+new$Year <- as.numeric(new$Year)
+new %>% select(des, Year, DeathRate, name, state,region,division) ->new1
+cbind(new1,deathset) -> DF
+
+DF$Year <- as.character(DF$Year)
+plot<- DF %>% 
+  ggplot(aes(Year, DeathRate, col=division)) + 
+  geom_point(alpha=0.48, aes(size=(Deaths
+                                   ), jitter=.002)) + 
+  scale_color_manual(values=c(gbp, '#69D2E7','#C7F464','#CC4E64',"pink")) + 
+  labs(title="Opioid Death Rate vs Year") + 
+  theme(axis.text = element_text(hjust = 1, size=6.7), 
+        axis.title = element_text(size=9)) 
+# + scale_x_log10() + scale_y_log10()
+
+```
+```{r plot showing death rate vs Year}
+plot + coord_flip() + theme_minimal()
+```
+
+```{r}
+
+  ggplot(DF)  + 
+  geom_point(aes(x=Deaths, y=DeathRate, col=division,size=DeathRate, group=Deaths),alpha=0.64) +
+  labs(title="Opioid Death Rate vs Opioid Deaths 2013-2015, logscale") + theme_minimal() +
+  theme(axis.text = element_text(hjust = 1, size=6.7), 
+        axis.title = element_text(size=9)) +
+  scale_color_manual(values=c("#B6F145","#FF4949", '#69D2E7','#C7F464','#CC4E64',"pink", "#2f2016","purple4", "#456789")) + geom_smooth(aes(x=Deaths, y=DeathRate), se=T, col="#A7DBD8")+ scale_x_log10() + scale_y_log10() 
+# + geom_label(aes(x=Deaths, y=DeathRate, label=state, col=Year)) # boxplot for continuous data
+```
+
+```{r rates stategrid building}
+rates1 <- longset %>% gather(Rate.2013,Rate.2014,Rate.2015, key="yr", value="Rate")
+library(readr)
+stategrid <- read.csv("state-grid-coordinates.tsv", stringsAsFactors = FALSE, sep="\t")
+stategrid$ysideup <- 12 - stategrid$y
+fullopioiddeathset_2013_2015$population <- 
+  as.numeric(fullopioiddeathset_2013_2015$population)
+library(noncensus)
+```
+
+```{r population vs deaths size by rates}
+fullopioiddeathset_2013_2015$population<- as.numeric(fullopioiddeathset_2013_2015$population)
+fullopioiddeathset_2013_2015$area <- as.numeric(fullopioiddeathset_2013_2015$area)
+fullopioiddeathset_2013_2015 %>% ggplot(aes(population/area))+ 
+  geom_point(aes(y=Deaths.2015, col=division),size=3, alpha=0.2) + geom_point(aes(y=Deaths.2014, col=division), size=3, alpha=0.7) + theme_classic() +  geom_point(aes(y=Deaths.2013, col=division), size=1)+ 
+  ggtitle("Opioid Deaths 2013, 2014, 2015 vs population") +labs(y="Deaths in 2013-2015") + scale_x_log10()
+```
+
+```{r more data}
+longset$popoverarea <- as.numeric(longset$population)/
+  as.numeric(longset$area)
+summary(100*(longset$popoverarea))
+longset$highdense <- longset$popoverarea
+longset$highdense <- 
+  ifelse(longset$popoverarea > 230, "Dense","NotDense")
+fullopioiddeathset_2013_2015$Change.2014.2015 <- 
+  100*((fullopioiddeathset_2013_2015$Rate.2015/
+          fullopioiddeathset_2013_2015$Rate.2014)-1)
+
+table(fullopioiddeathset_2013_2015$Significant)
+
+longset$population <- as.numeric(longset$population)
+
+
+interested.names <- c("Change.2014.2015","Significant","Change", "highdense",
+                      "name", "region", "Deaths.2015", "Deaths.2015")
+
+# sample( c(1:10) , 51 , replace=T)
+
+fullopioiddeathset_2013_2015$Change.2014.2015 <- 
+  100*((fullopioiddeathset_2013_2015$Rate.2015/fullopioiddeathset_2013_2015$Rate.2014)-1)
+fullopioiddeathset_2013_2015$Change.2013.2014 <- 
+  100*((fullopioiddeathset_2013_2015$Rate.2014/fullopioiddeathset_2013_2015$Rate.2013)-1)
+
+dffff <- fullopioiddeathset_2013_2015 %>% gather(Change.2013.2014, Change.2014.2015, 
+                                                 key="YearChange",
+                                                 val="Percentage")
+length(dffff$YearChange)
+
+n <- 5
+a<- rep(1:9, each=n)
+b <- rep(2013:2014, each=51)
+dffff$toadd<- c(a,a,1:9, 1, 2,3)
+length(dffff$toadd)
+```
+```{r showing percentage between years in deaths}
+dffff$numbers <- paste(b, dffff$toadd)
+dffff$numbers <- gsub(" ", ".", dffff$numbers)
+dffff$numbers <- as.numeric(dffff$numbers)
+DFDF <- dffff[c("numbers","Percentage")]
+
+Deaths <- c(fullopioiddeathset_2013_2015$Deaths.2013, fullopioiddeathset_2013_2015$Deaths.2015)
+DFDF %>% ggplot(aes(numbers, Percentage)) + 
+  geom_point(aes(size=abs((dffff$Percentage -.0001)*2901),col=ifelse(Percentage > 0, 
+                                                                     "grey", "maroon")),
+             alpha=0.2) + geom_vline(xintercept = c(2013,2014, 2015), lty="dotted") + 
+  geom_hline(yintercept = c(0), alpha=0.7) + geom_point(aes(size=abs((Percentage-.0001)*2999), 
+                                                            col=ifelse(Percentage > 0, 
+                                                                       "grey", "maroon")), 
+                                                        pch=21, alpha=0.9) + 
+  theme(legend.position = "none", axis.ticks.x = element_blank(), axis.text.x = element_blank()) + 
+  labs(y= "% Change in Opioid Death Rate", 
+       x="    2013-2014                                                2014-2015", 
+       title="% Change in Opioid Death Rates ") + ylim(-70,150) 
+```
+```{r year.df creation}
+year.df <- data.frame(DeathRate=c(fullopioiddeathset_2013_2015$Rate.2013, fullopioiddeathset_2013_2015$Rate.2014,fullopioiddeathset_2013_2015$Rate.2015))
+mean.df <-
+  longset %>% group_by(region) %>% summarise(mean=mean(Deaths))
+median.df <-
+  longset %>% group_by(region) %>% summarise(median=median(Deaths))
+var(longset$Deaths)
+ mode.df <-
+  longset %>% group_by(region) %>% summarise(mode=mode(Deaths))
+sd.df <-
+  longset %>% group_by(region) %>% summarise(sd=sd(Deaths))
+min.df <-
+ longset %>% group_by(region) %>% summarise(min=min(Deaths))
+
+```
+```{r warning=FALSE}
+length(fullopioiddeathset_2013_2015$Rate.2013)
+51*3
+year.df$state <- fullopioiddeathset_2013_2015$state
+
+fdfF <- fullopioiddeathset_2013_2015 %>% select(Rate.2013, Rate.2014, Rate.2015, state) %>% 
+  left_join(states, by="state") 
+d2 <- fdfF %>% gather(Rate.2013, Rate.2014, Rate.2015, key="key", value="DeathRate") %>% mutate(Year=factor(rep(2013:2015, each=51))) %>% spread(Year, DeathRate)
+d1 <- fdfF%>% select(state, Rate.2013, Rate.2014, Rate.2015, region) 
+# d1 %>% spread(region, Rate.2013)
+
+
+```
+```{r df, warning=FALSE}
+DFDF <-fullopioiddeathset_2013_2015 %>% select(Rate.2013, Rate.2014, Rate.2015, state) %>% 
+  left_join(states, by="state") %>% select(region, Rate.2013, Rate.2014, Rate.2015) %>% spread(region, Rate.2013,drop=T) %>% mutate(region.2014=fullopioiddeathset_2013_2015$region) %>% mutate(region.2015=fullopioiddeathset_2013_2015$region) %>% mutate(key=c(1:51)) 
+DFDF$region.2014 <- gsub("Midwest", "Midwest.2014",DFDF$region.2014)
+DFDF$region.2014 <- gsub("West", "West.2014",DFDF$region.2014)
+DFDF$region.2014 <- gsub("Northeast", "Northeast.2014",DFDF$region.2014)
+DFDF$region.2014 <- gsub("South", "South.2014",DFDF$region.2014)
+# %>% spread(region.2015, Rate.2015)
+DFDF$region.2015 <- gsub("Midwest", "Midwest.2015",DFDF$region.2015)
+DFDF$region.2015 <- gsub("West", "West.2015",DFDF$region.2015)
+DFDF$region.2015 <- gsub("Northeast", "Northeast.2015",DFDF$region.2015)
+DFDF$region.2015 <- gsub("South", "South.2015",DFDF$region.2015)
+a1 <- DFDF %>% spread(region.2014, Rate.2014) %>% spread(region.2015, Rate.2015)
+a2 <- a1[1:4]
+colnames(a2) <- c("Midwest.2013","Northeast.2013", "South.2013", "West.2013")
+regions2013 <- as.data.frame(t(sapply(a2, summary)))
+a2a <- a1[6:13]
+regions2014.2015 <- as.data.frame(t(sapply(a2a, summary)))
+regions.stats<- rbind(regions2013, regions2014.2015)
+```
+```{r creating key, warning=FALSE}
+library(ggplot2)
+dF <- regions.stats 
+# %>% select(-`NA's`)
+dF$reg1 <- rownames(regions.stats)
+dF$reg <- rownames(regions.stats)
+dF1<- dF %>% separate(reg, c("Region", "Year"), by=".")
+dF1$Key <- c("Median", "Median", "Median", "Median","Median", "Median", "Median", "Median","Median", "Median", "Median", "Median")
+
+izzy <- dF1 %>% gather(-Key,-reg1, -`NA's`,-Region, -Year, key="key", value="value") 
+str(izzy)
+
+```
+
+```{r}
+ggplot() + geom_point(data=izzy, aes(x=reg1, y= izzy$value, col=Region), cex=2, alpha=0.36) + 
+  geom_point(data=izzy, aes(x=reg1, y=izzy$value, col=Region), cex=2.1, pch=21) + 
+  labs(x="Regions.Year", y="DeathRate Values", title="Summary Statistics by Region and Year", subtitle="Using Median as Center") + geom_segment(data=dF1, aes(x=reg1, y = Min., xend = reg1, yend = Max., colour = Region), alpha=0.46, size=.61) + 
+  theme_dark() + theme(legend.title=element_blank(), axis.text.x = element_text(vjust = .78, angle = 45, hjust=.9),axis.ticks =element_blank()) + 
+  geom_point(data=izzy, aes(x=reg1, y= value, col=Region), cex=2.5, pch=21) + geom_point(data=dF1,aes(x=reg1, y=Median, col=Key), size=2.9, alpha=0.79) + geom_point(data=dF1,aes(x=reg1, y=Median, col=Key), size=2.9, pch=21) + scale_color_manual(values = c("darkred", "navy", "#A7DBD8", "black", "white")) + ylim(-.5,45)
+```
+#542437
+
+```{r message=FALSE}
+regions.stats$regionsYear <- (rownames(regions.stats))
+rownames(regions.stats) <- c()
+d_f <- data.frame(t(regions.stats))
+d_f <-
+  d_f[1:7,]
+colnames(d_f) <- regions.stats$regionsYear
+d_f$stats <- rownames(d_f)
+dim(d_f)
+dim(regions.stats)
+df2 <-d_f %>% dplyr::select(-stats)
+```
+#733080,#F4BAC8,#A40607,#7288B9,#F0C595,#733080,#F4BAC8,#A40607
+```{r loading ggpub, message=FALSE, warning=FALSE}
+library(ggpubr)
+# Groups that we want to compare
+year.df$Region <- fullopioiddeathset_2013_2015$region
+year.df$Year <- rep(2013:2015, each=51)
+my_comparisons <- list(
+  c("2013", "2014"), c("2013", "2015"),
+  c("2014", "2015")
+)
+
+ggboxplot(
+  year.df, x = "Year", y = "DeathRate",
+  color = "Year", palette = c("#733080", "#7288B9", "#A40607"),
+  add = "jitter", width = 0.57
+  ) +
+  stat_compare_means(comparisons = my_comparisons, method = "t.test") + ggtitle("Opioid Death Rates by Year and p-values comparing years")
+```
+HEREEEE!!! 8.34PM 12.27 ---> knit and publish to git tonight
+
+```{r methods of normalization, warning=FALSE}
+# Gives count, mean, standard deviation, standard error of the mean, and confidence interval (default 95%).
+##   data: a data frame.
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   groupvars: a vector containing names of columns that contain grouping variables
+##   na.rm: a boolean that indicates whether to ignore NA's
+##   conf.interval: the percent range of the confidence interval (default is 95%)
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
+}
+
+## Norms the data within specified groups in a data frame; it normalizes each
+## subject (identified by idvar) so that they have the same mean, within each group
+## specified by betweenvars.
+##   data: a data frame.
+##   idvar: the name of a column that identifies each subject (or matched subjects)
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   betweenvars: a vector containing names of columns that are between-subjects variables
+##   na.rm: a boolean that indicates whether to ignore NA's
+normDataWithin <- function(data=NULL, idvar, measurevar, betweenvars=NULL,
+                           na.rm=FALSE, .drop=TRUE) {
+    library(plyr)
+
+    # Measure var on left, idvar + between vars on right of formula.
+    data.subjMean <- ddply(data, c(idvar, betweenvars), .drop=.drop,
+     .fun = function(xx, col, na.rm) {
+        c(subjMean = mean(xx[,col], na.rm=na.rm))
+      },
+      measurevar,
+      na.rm
+    )
+
+    # Put the subject means with original data
+    data <- merge(data, data.subjMean)
+
+    # Get the normalized data in a new column
+    measureNormedVar <- paste(measurevar, "_norm", sep="")
+    data[,measureNormedVar] <- data[,measurevar] - data[,"subjMean"] +
+                               mean(data[,measurevar], na.rm=na.rm)
+
+    # Remove this subject mean column
+    data$subjMean <- NULL
+
+    return(data)
+}
+
+
+## Summarizes data, handling within-subjects variables by removing inter-subject variability.
+## It will still work if there are no within-S variables.
+## Gives count, un-normed mean, normed mean (with same between-group mean),
+##   standard deviation, standard error of the mean, and confidence interval.
+## If there are within-subject variables, calculate adjusted values using method from Morey (2008).
+##   data: a data frame.
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   betweenvars: a vector containing names of columns that are between-subjects variables
+##   withinvars: a vector containing names of columns that are within-subjects variables
+##   idvar: the name of a column that identifies each subject (or matched subjects)
+##   na.rm: a boolean that indicates whether to ignore NA's
+##   conf.interval: the percent range of the confidence interval (default is 95%)
+summarySEwithin <- function(data=NULL, measurevar, betweenvars=NULL, withinvars=NULL,
+                            idvar=NULL, na.rm=FALSE, conf.interval=.95, .drop=TRUE) {
+
+  # Ensure that the betweenvars and withinvars are factors
+  factorvars <- vapply(data[, c(betweenvars, withinvars), drop=FALSE],
+    FUN=is.factor, FUN.VALUE=logical(1))
+
+  if (!all(factorvars)) {
+    nonfactorvars <- names(factorvars)[!factorvars]
+    message("Automatically converting the following non-factors to factors: ",
+            paste(nonfactorvars, collapse = ", "))
+    data[nonfactorvars] <- lapply(data[nonfactorvars], factor)
+  }
+
+  # Get the means from the un-normed data
+  datac <- summarySE(data, measurevar, groupvars=c(betweenvars, withinvars),
+                     na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Drop all the unused columns (these will be calculated with normed data)
+  datac$sd <- NULL
+  datac$se <- NULL
+  datac$ci <- NULL
+
+  # Norm each subject's data
+  ndata <- normDataWithin(data, idvar, measurevar, betweenvars, na.rm, .drop=.drop)
+
+  # This is the name of the new column
+  measurevar_n <- paste(measurevar, "_norm", sep="")
+
+  # Collapse the normed data - now we can treat between and within vars the same
+  ndatac <- summarySE(ndata, measurevar_n, groupvars=c(betweenvars, withinvars),
+                      na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Apply correction from Morey (2008) to the standard error and confidence interval
+  #  Get the product of the number of conditions of within-S variables
+  nWithinGroups    <- prod(vapply(ndatac[,withinvars, drop=FALSE], FUN=nlevels,
+                           FUN.VALUE=numeric(1)))
+  correctionFactor <- sqrt( nWithinGroups / (nWithinGroups-1) )
+
+  # Apply the correction factor
+  ndatac$sd <- ndatac$sd * correctionFactor
+  ndatac$se <- ndatac$se * correctionFactor
+  ndatac$ci <- ndatac$ci * correctionFactor
+
+  # Combine the un-normed means with the normed results
+  merge(datac, ndatac)
+}
+
+
+library(psych)
+ps <- describeBy(longset$Deaths, longset$region)
+ps
+Deaths.M <- as.data.frame(ps$Midwest)
+rownames(Deaths.M) <- c("Midwest")
+Deaths.W <- as.data.frame(ps$West)
+rownames(Deaths.W) <- c("West")
+Deaths.N <- as.data.frame(ps$Northeast)
+rownames(Deaths.N) <- c("Northeast")
+Deaths.S <- as.data.frame(ps$South)
+rownames(Deaths.S) <- c("South")
+stats.region <- rbind(Deaths.N, Deaths.S, Deaths.M, Deaths.W)
+stats.region$region <-rownames(stats.region)
+```
+```{r}
+colnames(stats.region)
+stats.region$mean <- round(stats.region$mean, 2)
+stats.region$sd <- round(stats.region$sd, 2)
+stats.region$region <- c("Northeast", "South", "Midwest", "West")
+```
+```{r}
+my_mean=aggregate(longset$Deaths, by=list(longset$region), mean) ; colnames(my_mean)=
+  c("region" , "mean")
+my_mean$mean <- round(my_mean$mean, 2)
+my_mean$region <- as.character(my_mean$region)
+my_sd=aggregate(longset$Deaths, by=list(longset$region), sd) ; colnames(my_sd)=
+  c("region" , "sd")
+my_sd$region <- as.character(my_sd$region)
+my_sd$sd <- round(my_sd$sd, 2)
+
+    # merge(my_mean, my_sd, by="region")
+EN <- merge(death2015, Xdeath_2013_2014)
+izzyEN <- EN %>% select(state, Deaths.2013, Deaths.2014, Deaths.2015)
+ib <- data.frame(state=c(EN$state, EN$state, EN$state), Deaths=c(EN$Deaths.2013, EN$Deaths.2014, EN$Deaths.2015))
+ib$state <- as.character(ib$state)
+states$state <- as.character(states$state)
+izb <- ib %>% left_join(states) %>% select(state, Deaths, name, region)
+izb$region <- as.character(izb$region)
+
+```
+```{r}
+izbfreq <- as.data.frame(table(izb$region))
+colnames(izbfreq) <- c("region", "n")
+izbfreq$region <-as.character(izbfreq$region)
+info <- merge(izbfreq,stats.region)
+izb <- izb %>% left_join(izbfreq)
+```
+```{r}
+summary(izb$Deaths)
+```
+```{r}
+im <-describeBy(DF$DeathRate, DF$division)
+bydivisionDF <- as.data.frame(rbind("East North Central"=im$`East North Central`,"West North Central"=
+im$`West North Central`,
+"Mid-Atlantic"=im$`Mid-Atlantic`,
+"New England"=im$`New England`,
+"South Atlantic"=im$`South Atlantic`,
+"West South Central"=im$`West South Central`,
+ "Mountain"= im$Mountain,
+  "Pacific"= im$Pacific))
+bydivisionDF$division = rownames(bydivisionDF)
+
+```
+
+```{r ggerrorplot }
+
+ggerrorplot(DF, x = "division", y = "DeathRate",
+            desc_stat = "mean_sd", color = "black",
+            add = "jitter", add.params = list(color = "#A7DBD8")
+            ) + coord_flip() + labs(x="Division", y = "Opioid Death Rate", subtitle=
+                                      "Opioid Death Rates population and age adjusted") + ggtitle("Death Rates by Division Grouped by Division.", subtitle=" Error bars depicting mean and standard deviation")
+
+
+```
+```{r}
+iM <- EN %>% gather(Rate.2013, Rate.2014, Rate.2015, 
+                                                 key="YearlyRates",
+                                                 val="StateDeathRates") %>% select(state, YearlyRates, StateDeathRates) %>% left_join(states, by="state")
+
+iM$Year <- iM$YearlyRates
+iM <- iM %>% separate(Year, c("Type","YearlyDeathRate", sep="."))
+
+```
+```{r SCATTER HERE OR COOW}
+
+BAB <- EN %>% left_join(states) %>% left_join(iM)
+
+iM$poplnarea <- (as.numeric(iM$population)/as.numeric(iM$area))
+
+```
+
+```{r creating change plot and other deathrate plots}
+Changeplot <-fullopioiddeathset_2013_2015 %>% 
+  ggplot(aes(name, Change, fill=region)) + geom_col() + 
+  labs(x="", y="Opioid Death Rate Change", 
+       title="Percentage Change in Opioid Death Rates from 2013 to 2014") +
+        theme(axis.text = element_text(hjust = 1, size=7, angle=90)) +
+  scale_fill_manual(values=cols) + theme_hc()
+
+deathrate2013.plot <-fullopioiddeathset_2013_2015 %>% 
+  ggplot(aes(state, Rate.2013, col=region))  + 
+  geom_point(alpha=0.42,aes(size=Rate.2014)) + geom_text(aes(label=Rate.2014)) +coord_flip() +
+  labs(x="", y="Opioid Death Rate", 
+       subtitle="Age and Population Adjusted 2013 Death Rates") +
+        theme(axis.text = element_text(hjust = 1, size=6.7),
+              axis.title = element_text(size=9), 
+              legend.position = "none") + 
+  scale_color_manual(values=cols)  +   # Draw points
+  geom_segment(aes(x=state, 
+                   xend=state, 
+                   y=min(Rate.2013), 
+                   yend=40), 
+               linetype="dotted", col="black", 
+               size=0.1) 
+
+deathrate2014.plot <-fullopioiddeathset_2013_2015 %>% 
+  ggplot(aes(state, Rate.2014, col=region)) + 
+  geom_point(alpha=0.42, aes(size=Rate.2014)) + 
+  labs(x="", y="Opioid Death Rate", 
+       subtitle="Age and Population Adjusted 2014 Death Rates") +
+        theme(axis.text = element_text(hjust = 1, size=6.7), 
+              axis.title = element_text(size=9)) + 
+  coord_flip() + scale_color_manual(values=cols) + 
+  geom_segment(aes(x=state, 
+                   xend=state, 
+                   y=min(Rate.2013), 
+                   yend=40), 
+               linetype="dotted", col="black", 
+               size=0.1) 
+dfm <- BAB
+ggdotchart(dfm, x = "division", y = "Rate.2015",
+           color = "region",                           # Color by groups
+           palette = "Dark2",# Custom color palette
+           sorting = "descending",                       # Sort value in descending order
+           add = "segments",                             # Add segments from y = 0 to dots
+           rotate = TRUE,                                # Rotate vertically
+           group = "region",                                # Order by groups
+           dot.size = 5,                                 # Large dot size
+           label = round(dfm$Rate.2015),                        # Add mpg values as dot labels
+           font.label = list(color = "white", size = 5.5, 
+                             vjust = 0.5),               # Adjust label parameters
+           ggtheme = theme_bw()                  # ggplot2 theme
+           ) + labs(x="states", title="State Opioid Death Rates in 2015, organized by Region")
+         
+
+```
+```{r}
+Changeplot
+```
+
+```{r message=FALSE, warning=FALSE}
+library(cowplot)
+# Scatter plot colored by groups ("Species")
+BAB$area <- as.numeric(BAB$area)
+
+sp <- ggscatter(BAB, x = "Change", y = "Deaths.2014",
+                color = "Significant", palette = "Dark2",
+                size = 2, alpha = 0.6) + border()                                         
+# Marginal density plot of x (top panel) and y (right panel)
+xplot <- ggdensity(BAB, "Change", fill = "Significant",
+                   palette = "Dark2")
+yplot <- ggdensity(BAB, "Deaths.2015", fill =  "Significant",
+                   palette = "Dark2")+
+  rotate()
+# Cleaning the plots
+sp <- sp + rremove("legend")
+yplot <- yplot + clean_theme() + rremove("legend")
+xplot <- xplot + clean_theme() + rremove("legend")
+# Arranging the plot using cowplot
+library(cowplot)
+plot_grid(xplot, NULL, sp, yplot, ncol = 2, align = "hv", 
+          rel_widths = c(2, 1), rel_heights = c(1, 2))
+```
+```{r}
+BAB<- unique(BAB)
+ggboxplot(BAB, x = "region",
+          y = c("Rate.2013", "Rate.2014", "Rate.2015"),
+          combine = TRUE,
+          color = "region", palette = "Dark2",
+          ylab = "Death Rates", 
+          add = "jitter",                               # Add jittered points
+          add.params = list(size = 0.1, jitter = 0.2),  # Point size and the amount of jittering
+          label = "state",                # column containing point labels
+          label.select = list(top.up = 2, top.down = 2),# Select some labels to display
+          font.label = list(size = 7.9, face = "italic"), # label font
+          repel = TRUE                                  # Avoid label text overplotting
+          ) + theme(axis.text.x = element_text(size=7, angle=45, vjust=0.75)) +
+  labs(x="Region", y="Opioid Death Rates", title="State Opioid Death Rates by Year", subtitle="Rates adjusted for age and population")
+```
+
+```{r creating means for deathsranges plot, message=FALSE, warning=FALSE}
+
+normalise <- function(x) {
+    return ((x - min(x)) / (max(x) - min(x)))
+}
+reorder_size <- function(x) {
+        factor(x, levels = names(sort(table(x), decreasing = TRUE)))
+}
+
+izzyEN <- EN %>% select(state, Rate.2013, Rate.2014, Rate.2015)
+izzyEN <- data.frame(state=c(EN$state, EN$state, EN$state), Rates=c(EN$Rate.2013, EN$Rate.2014, EN$Rate.2015))
+izzyEN$state <- as.character(izzyEN$state)
+states$state <- as.character(states$state)
+izzyENlov <- izzyEN %>% left_join(states) %>% select(state, Rates, name, region)
+izzyENlov $region <- as.character(izzyENlov $region)
+library(ggplot2)
+izzyENlov  %>% ggplot(aes(x = region, y = Rates)) + 
+        geom_point(colour=rgb(0,1,0.61,0.34), alpha=0.32) + geom_boxplot(colour=rgb(0,1,0.61,0.9), fill=NA) +
+ #        geom_errorbar(stats.region, aes(x = region, y = sd, 
+ #                                          ymin = mean - sd, ymax = mean + sd), 
+ #                      colour = rgb(0.4,0.8,0.2,0.4) , width = 0.5, size=1.32) 
+  ggtitle("State Opioid Death Rates by US Demographic Region, 2013-2015") + theme_minimal() + labs(subtitle="Using Mean as Center", x="Region", y="Death Rates") 
+
+ggerrorplot(izzyENlov, x = "region", y = "Rates", 
+            desc_stat = "mean_sd", 
+            color = "region", palette = "Dark2",
+            add = "jitter", add.params = list(color = "darkgray")
+            ) + labs(title="Opioid Death Rates by US Region", subtitle="Using Mean as Center", x="Region", y="Death Rates") + theme_bw() + stat_summary()
+
+```
+```{r}
+library(psych)
+data=data.frame(names=izzyENlov$region,value=izzyENlov$Rates)
+library(ggplot2)
+ps <- describeBy(data$value, data$names)
+ps
+Deaths.M <- as.data.frame(ps$Midwest)
+rownames(Deaths.M) <- c("Midwest")
+Deaths.W <- as.data.frame(ps$West)
+rownames(Deaths.W) <- c("West")
+Deaths.N <- as.data.frame(ps$Northeast)
+rownames(Deaths.N) <- c("Northeast")
+Deaths.S <- as.data.frame(ps$South)
+rownames(Deaths.S) <- c("South")
+stats.region1 <- rbind(Deaths.N, Deaths.S, Deaths.M, Deaths.W)
+stats.region1$names <-rownames(stats.region1)
+stats.region1$region <- stats.region1$names
+```
+
+```{r}
+stats.region11 <- stats.region1 %>% select(-vars)
+```
+
+```{r message=FALSE, warning=FALSE}
+DF  %>% ggplot() + geom_errorbar(data = stats.region11, aes(x = region, y = sd, ymin = mean - sd, ymax = mean + sd), colour=rgb(0.8,.1,0.61,0.24), width=.21, alpha=0.52)  + labs(title="Opioid Death Rates by Region 2013-2015", subtitle="Death Rates age and population adjusted", x="Region", y="Opioid Death Rates") + geom_jitter(data=stats.region11, aes(x=region, y=min), size=2.5, col=rgb(0.8,.1,0.61,0.24), alpha=0.52, width=.01) +  geom_point(data=stats.region11, aes(x=region, y=max),size=4, colour=rgb(0.8,.1,0.61,0.24), alpha=0.62) + theme(legend.position = "none") +  geom_point(data=stats.region11, aes(x=region, y=mean), size=9, colour=rgb(0.8,.6,0.91,0.67)) + theme(legend.position = "none")+  geom_point(data=stats.region11, aes(x=region, y=mean), size=9.1, colour='purple4', pch=21) + geom_text(data=stats.region11, aes(x=region, y=mean, label=round(mean,2)), size=2.5, col="purple4") + ylim(-1,44) + geom_text(data=stats.region11, aes(x=region, y=0, label=c("N=27", "N=51", "N=38", "N=39"))) 
+```
+```{r}
+MidwestDF <- data %>% filter(names=="Midwest")
+WESTDF <- data %>% filter(names=="West")
+southDF <- data %>% filter(names=="South")
+Northeast <- data %>% filter(names=="Northeast")
+
+dani <- as.data.frame(rbind(West=summary(WESTDF$value), Midwest=summary(MidwestDF$value), South=summary(southDF$value), Northeast=summary(Northeast$value)))
+dani$names <- rownames(dani)
+#Create Data GEREEE
+
+#  
+# #Calculation of mean and sd of each group ?
+my_mean=aggregate(data$value , by=list(data$names) , mean) ; colnames(my_mean)=c("names" , "mean")
+my_sd=aggregate(data$value , by=list(data$names) , sd) ; colnames(my_sd)=c("names" , "sd")
+my_info=merge(my_mean , my_sd , by.x=1 , by.y=1)
+my_min=aggregate(data$value , by=list(data$names) , min) ; colnames(my_min)=c("names" , "min")
+my_max=aggregate(data$value , by=list(data$names) , max) ; colnames(my_max)=c("names" , "max")
+my_IQR=aggregate(data$value , by=list(data$names) , IQR) ; colnames(my_IQR)=c("names" , "IQR")
+dn <-merge(dani, my_IQR)
+dfn <- merge(dn, my_info)
+# # Make the plot
+my_median=aggregate(data$value , by=list(data$names) , median) ; colnames(my_median)=c("names" , "median")
+my_info2=merge(my_min, my_max, by="names")
+my_info2.1<- merge(my_info2, my_median, by="names")
+my_info2.2 <- merge(my_info2.1, my_IQR, by="names")
+# data %>% filter(names=="Midwest") 
+```
+
+
+```{r error plots  but ignoring y, message=FALSE, warning=FALSE, echo=FALSE}
+
+ggplot(data) + geom_errorbar(data = my_info, aes(x = names, y = sd, ymin = mean - sd, ymax = mean + sd), colour = "#FF3D7F",alpha=0.42 , width = .5 , size=1.5) +
+        geom_point(aes(x = names, y = value),size=.9, colour=rgb(0,1,0.61,0.34), alpha=0.42)  +
+        geom_point(aes(x = names, y = value),size=.95, colour="white", alpha=0.32) +
+   geom_point(aes(x = names, y = value),size=1.95, colour="#3FB8AF", pch=21,alpha=0.82) +
+      geom_point(data = my_info, aes(x=names, y = mean),size=8.9,colour = rgb(0.7,0.6,0.9,0.7)) +
+  geom_text(data=my_info, aes(x=names, y=mean, label = round(mean, 1)), 
+            size=3.2,col="purple4") +   
+  geom_point(data = my_info, aes(x=names, y = mean),size=9.1,pch=21,colour = "purple4") + 
+  ggtitle("State Opioid Death Rates by US Demographic Region, 2013-2015") + theme_minimal() + 
+  labs(subtitle="Mean as Center. Error Bar based on mean +/- sd. Max, min, IQR also included", x="Region", y="Death Rate") + 
+  geom_point(data = my_info2, aes(x=names , y = min),size=2.5, colour = "#E94E77", alpha=0.69) +
+  geom_point(data = my_info2, aes(x=names, y = max),size=2.5,colour = "#E94E77", alpha=0.69) +
+  geom_point(data = dfn, aes(x = names, y =`1st Qu.`), colour = "#A562AC", size=3.2, alpha=.58) +
+  geom_point(data = dfn, aes(x = names, y = `3rd Qu.`), colour = "#A562AC", size=3.2, alpha=.58) +
+  geom_point(data = dfn, aes(x = names, y =`1st Qu.`), colour = "#A562AC", size=3.5,pch=21) +
+  geom_point(data = dfn, aes(x = names, y = `3rd Qu.`), colour = "#A562AC", size=3.5, pch=21)  + theme(legend.position = "none")
+  # geom_point(data = my_info2, aes(x=names, y = max),size=3,colour = "#FF3D7F", alpha=0.23) 
+# +#762E71, #A562AC, #C0BACF, #D9CBC9, #F0DBC4
+#   geom_text(data=my_info2, aes(x=names, y=min, label = min), size=.5,col="forestgreen") 
+```
+
+```{r}
+# stats.region
+ggdensity(BAB,
+       x = c("Rate.2013", "Rate.2014",  "Rate.2015"),
+       y = "..count..",
+       merge = TRUE,                    # Merge the 3 plots
+       xlab = "", 
+       add = "median",                  # Add median line. 
+       rug = TRUE ,                     # Add marginal rug
+       palette = gbp                 # Change color palette
+) + ggtitle("Opioid Death Rates Density based on Counts")
+```
+
+```{r opioid deaths different color scheme, message=FALSE, warning=FALSE}
+dff<-longset %>% dplyr::select(name, Year, region, Deaths)
+unique(dff) %>% ggplot(aes(x=reorder(name,Deaths),y=Deaths, fill=Year)) + 
+  geom_col(col="white", alpha=0.8) + labs(title="Opioid Deaths 2013 - 2015", subtitle="Raw Counts", 
+                                          x="State", y="Deaths") + 
+  coord_flip() + theme_classic() +
+        theme(axis.text = element_text(hjust = 1, size=7, angle=1)) + 
+  scale_fill_manual(values=gbp)
+
+```
+```{r ovedosegrid creation just grid , include=FALSE}
+overdosegrid <- fullopioiddeathset_2013_2015 %>% merge(stategrid, by="state")
+symbols(overdosegrid$x, overdosegrid$ysideup,
+        squares = rep(1, dim(overdosegrid)[1]),
+        inches=FALSE,
+        asp=1,
+        bty="n",
+        xaxt="n", yaxt="n",
+        xlab="", ylab="",
+        bg=overdosegrid$col,
+        fg="#ffffff")
+labeltext <- paste(overdosegrid$state, "\n", format(overdosegrid$Rate.2015, 2), sep="")
+text(overdosegrid$x, overdosegrid$ysideup, labeltext, cex=.6, col="black")
+```
+
+```{r creating colors and map for Rate.2013}
+overdosegrid$col <- sapply(overdosegrid$Rate.2013, function(x) {
+      if (x < 10) {
+        col <- "#df65b0"
+    } else if (x < 15) {
+        col <- "#e7298a"
+    } else if (x < 20) {
+        col <- "#ce1256"
+    } else if (x < 25) {
+        col <- "#980043"
+    } else {
+        col <- "#67001f"
+    }
+    return(col)
+})
+# 2013
+par(mar=c(0,0,0,0), bg="white")
+plot(0:1, 0:1, type="n", xlab="", ylab="", axes=FALSE, asp=1)
+# Draw map like before.
+par(new=TRUE, plt=c(0, 1, 0, 1))
+symbols(overdosegrid$x, overdosegrid$ysideup,
+        squares = rep(1, dim(overdosegrid)[1]),
+        inches=FALSE,
+        asp=1,
+        bty="n",
+        xaxt="n", yaxt="n",
+        xlab="", ylab="",
+        bg=overdosegrid$col,
+        fg="#ffffff")
+labeltext <- paste(overdosegrid$state, "\n", format(overdosegrid$Rate.2013, 2), sep="")
+text(overdosegrid$x, overdosegrid$ysideup, labeltext, cex=.8, col="#ffffff")
+mtext("Opioid Death Rates 2013", side = 2, line = -2.5, cex=1.9, outer = T, col="#27223C")
+# Legend
+par(new=TRUE, plt=c(0, 1, .9, 1))
+plot(0, 0, type="n", xlim=c(0, 1), ylim=c(-.1,1), xlab="", ylab="", axes=FALSE)
+rect(xleft = c(.4, .45, .5, .55, .6)-.025,
+xright = c(.45, .5, .55, .6, .65)-.025,
+ybottom = c(0,0,0,0,0)+.1, ytop=c(.2, .2, .2, .2, .2)+.1,
+col=c("#df65b0", "#e7298a", "#ce1256", "#980043", "#67001f"),
+border="#ffffff", lwd=1)
+text(c(.45, .5, .55, .6)-.03, c(0,0,0,0)+.1, labels = 
+       c("10", "15", "20", "25"), pos=3, cex=.8)
+
+```
+```{r map of 2015 opioid death rates}
+#creating colors with death rates from 2015
+overdosegrid$col <- sapply(overdosegrid$Rate.2015, function(x) {
+      if (x < 10) {
+        col <- "#df65b0"
+    } else if (x < 15) {
+        col <- "#e7298a"
+    } else if (x < 20) {
+        col <- "#ce1256"
+    } else if (x < 25) {
+        col <- "#980043"
+    } else {
+        col <- "#67001f"
+    }
+    return(col)
+})
+
+# jpeg('plot2015map.jpg')
+par(mar=c(0,0,0,0), bg="white")
+plot(0:1, 0:1, type="n", xlab="", ylab="", axes=FALSE, asp=1)
+# Draw map like before.
+par(new=TRUE, plt=c(0, 1, 0, 1))
+symbols(overdosegrid$x, overdosegrid$ysideup,
+        squares = rep(1, dim(overdosegrid)[1]),
+        inches=FALSE,
+        asp=1,
+        bty="n",
+        xaxt="n", yaxt="n",
+        xlab="", ylab="",
+        bg=overdosegrid$col,
+        fg="#ffffff")
+labeltext <- paste(overdosegrid$state, "\n", format(overdosegrid$Rate.2015, 2), sep="")
+text(overdosegrid$x, overdosegrid$ysideup, labeltext, cex=.8, col="#ffffff")
+# Legend
+par(new=TRUE, plt=c(0, 1, .9, 1))
+plot(0, 0, type="n", xlim=c(0, 1), ylim=c(-.1,1), xlab="", ylab="", axes=FALSE)
+rect(xleft = c(.4, .45, .5, .55, .6)-.025,
+xright = c(.45, .5, .55, .6, .65)-.025,
+ybottom = c(0,0,0,0,0)+.1, ytop=c(.2, .2, .2, .2, .2)+.1,
+col=c("#df65b0", "#e7298a", "#ce1256", "#980043", "#67001f"),
+border="#ffffff", lwd=1)
+text(c(.45, .5, .55, .6)-.03, c(0,0,0,0)+.1, labels = c("10", "15", "20", "25"), pos=3, cex=.8)
+mtext("Opioid Death Rates 2015", side = 2, line = -2.5, cex=1.9, outer = T, col="#27223C")
+```
+```{r dpi=300}
+library(tidyverse)
+alluv <- longset %>% dplyr::group_by(highdense, region, Significant) %>% tally()
+library(alluvial)
+cols <- c("#73c6b6", "#772877", "#7C821E", "#D8B98B", "#7A4012", 
+          "#c6d4e1", "#2f2016", "#fcfaea", "#456789", "#F0B27A", "black")
+
+colnames(alluv) <- c("AreaPopln", "USRegion", "Change.13.14", "n")
+alluvial(alluv[1:3], freq=alluv$n, alpha=0.68, xw=0.2,cex.axis=0.8, 
+         cex = 0.6, blocks=T, border="white",col = 
+           ifelse(alluv$Change.13.14 == "Significant", "maroon", "grey"))
+```
